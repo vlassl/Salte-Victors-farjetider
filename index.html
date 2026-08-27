@@ -407,7 +407,7 @@
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 11</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 13</span></p>
     </div>
   </details>
 </div>
@@ -831,6 +831,7 @@ function openFetchModal(){
       <option value="ann">Tidtabell för led (kompakt)</option>
       <option value="bjorko">Björkö → färdigt datablock</option>
       <option value="raw">Rå JSON (felsökning)</option>
+      <option value="notes">Anmärkningar – unika texter</option>
       <option value="fields">Alla fält – nattens turer (utforska)</option>
       <option value="routes">Lista alla färjeleder</option>
     </select>
@@ -1007,7 +1008,31 @@ async function runFetch(){
       out.value=o;
       return;
     }
-    if(route==='all') route='28';
+    if(route==='all') route = (what==='fields') ? '33' : '28';
+    if(what==='notes'){
+      const res=await _apiCall(key,_annQuery(key,route,iso(base),iso(dEnd)));
+      const rows=(res.FerryAnnouncement||[]).filter(x=>!x.Deleted);
+      const seen={};
+      for(const a of rows){
+        for(const txt of (a.Info||[])){
+          const k=txt.trim();
+          if(!seen[k]) seen[k]={n:0, ex:[]};
+          seen[k].n++;
+          if(seen[k].ex.length<4)
+            seen[k].ex.push(a.DepartureTime.slice(5,10)+' '+a.DepartureTime.slice(11,16)+' '+
+              ((a.FromHarbor&&a.FromHarbor.Name)||'?').slice(0,8)+'→'+((a.ToHarbor&&a.ToHarbor.Name)||'?').slice(0,8));
+        }
+      }
+      const keys=Object.keys(seen).sort((x,y)=>seen[y].n-seen[x].n);
+      let o='### Unika Info-texter · led '+route+' · '+iso(base)+' + '+days+' dagar\n'+
+            '('+rows.length+' turer totalt, '+keys.length+' olika texter)\n';
+      keys.forEach((k,i)=>{
+        o+='\n['+(i+1)+'] '+seen[k].n+' turer\n'+k.replace(/\n/g,' ')+'\n    ex: '+seen[k].ex.join(' · ')+'\n';
+      });
+      out.value=o;
+      return;
+    }
+
     if(what==='fields'){
       // Hämtar ALLA fält (ingen INCLUDE) för nattens första turer,
       // där kallelseturer/anmärkningar finns.
