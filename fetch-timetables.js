@@ -2,7 +2,7 @@
 // Loggar även avvikelser (Deleted, DeviationId, okända Info-texter) till log/deviations.jsonl.
 // Nyckeln kommer från miljövariabeln TRV_KEY (GitHub Secret) och hamnar aldrig i repot.
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
+const { writeFileSync, readFileSync, existsSync, mkdirSync, appendFileSync } = require('node:fs');
 
 const KEY = process.env.TRV_KEY;
 if (!KEY) { console.error('TRV_KEY saknas'); process.exit(1); }
@@ -50,6 +50,7 @@ const KNOWN = [
   [/kör så nära framförvarande/i, 'generic'],
 ];
 
+async function main(){
 const today = new Date();
 const end = new Date(today); end.setDate(end.getDate() + DAYS);
 const unknownInfo = new Set();
@@ -183,3 +184,5 @@ if (unknownInfo.size) {
     console.log(`nya okända Info-texter: ${add.length}`);
   }
 }
+}
+main().catch(e=>{ console.error(e); process.exit(1); });
