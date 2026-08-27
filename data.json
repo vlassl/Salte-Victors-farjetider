@@ -1,5 +1,5 @@
 {
- "generated": "2026-08-27T15:08:30.834Z",
+ "generated": "2026-08-27T16:51:36.349Z",
  "source": "Trafikverket öppna API (FerryAnnouncement 1.2)",
  "note": "Avgångstider per hamn och datum. Ankomsttider för Nordöleden finns ej i API:et.",
  "days": {
