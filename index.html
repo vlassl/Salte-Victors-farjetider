@@ -391,7 +391,7 @@
       <p style="margin-top:2px"><button type="button" class="tblbtn" onclick="openTablesModal()">📋 Tidtabeller & perioder</button></p>
       <p>Tryck på tecknen i <b>Anm</b>-kolumnen för förklaring direkt i tabellen.</p>
       <p><dt>⚠︎ Tajt</dt><dd>Under 5 minuters marginal i bytet – var ute i god tid.</dd></p>
-      <p><dt>📞 X</dt><dd><b>Kallelsetur</b> (Nordöleden & Björköleden nattetid): beställs på telefonsvarare <a href="tel:+46104761184"><b>010‑476 11 84</b></a>, mellan 06:00–21:30, endast för kommande kväll/natt/morgon.</dd></p>
+      <p><dt>📞 X</dt><dd><b>Kallelsetur</b> nattetid. <b>Nordöleden:</b> beställs på telefonsvarare <a href="tel:+46104761184"><b>010‑476 11 84</b></a> mellan 06:00–21:30, endast för kommande kväll/natt/morgon. <b>Björköleden:</b> turen kallas 10–5 min före avgångstid på <a href="tel:+46771656565"><b>0771‑65 65 65</b></a>.</dd></p>
       <p><dt>☎ D</dt><dd><b>Förbeställs</b> (linje 296): senast 30 min före avresa. Ring färjan som kör turen – M/S Burö <a href="tel:+46706012604"><b>0706‑01 26 04</b></a> (ordinarie) eller Polstjernan <a href="tel:+46706012605"><b>0706‑01 26 05</b></a> (reserv).</dd></p>
       <p><b>Bilplats är inte garanterad på alla turer.</b> Relevant när du kör bil:</p>
       <p><dt>H</dt><dd>Fordon till/från Rörö lastas i mån av plats.</dd></p>
@@ -407,7 +407,7 @@
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 14</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 18</span></p>
     </div>
   </details>
 </div>
@@ -477,7 +477,33 @@ const BJORKO={cross:6, periods:[
    bj:['00:00','01:00','02:00','03:00','04:00','05:00','05:30','06:00','06:20','06:40','07:00','07:20','07:40','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:20','15:40','16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:30','19:00','19:30','20:00','20:30','21:00','21:30','22:00','22:30','23:00'],
    bjX:['02:00','03:00','04:00']}
 ]};
+let LIVE=null;
+const _isoD=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function liveDay(route,d){
+  if(!LIVE||!LIVE.days) return null;
+  const x=LIVE.days[_isoD(d)];
+  return (x&&x[route])||null;
+}
+// Hönöleden: minutlistor för vald riktning (live om möjligt)
+function honoTimes(which){          // 'lv' eller 'hono'
+  const L=liveDay('hono',selDate);
+  const key = which==='lv' ? 'V' : 'O';
+  if(L&&L[key]&&L[key].length) return L[key].map(M);
+  return hono[honoKey()][which];
+}
+async function loadLive(){
+  try{
+    const r=await fetch('data.json?'+Date.now(), {cache:'no-store'});
+    if(!r.ok) return;
+    const d=await r.json();
+    if(d&&d.days&&Object.keys(d.days).length){ LIVE=d; render(); }
+  }catch(e){ /* offline eller ingen data.json – inbäddade tider används */ }
+}
+
 function bjorkoPeriod(d){
+  const L=liveDay('bjorko',d);
+  if(L&&L.V&&L.V.length&&L.J&&L.J.length)
+    return {live:true, lv:L.V, lvX:L.VX||[], bj:L.J, bjX:L.JX||[]};
   const n=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
   for(const p of BJORKO.periods){
     if(n<p.from||n>p.to) continue;
@@ -552,6 +578,9 @@ function pair296(dt,A,B){
 const IDX_OUT={B:0,K:1,H:2,R:3}, IDX_RET={R:0,H:1,K:2,B:3};
 const _pm={};
 function nordPairs(dt,i){
+  const L=liveDay('nordoPairs',selDate);
+  if(L && L['B'+i] && L[i+'B'])
+    return {out:L['B'+i], ret:L[i+'B'], live:true};
   const key=dt+i; if(_pm[key]) return _pm[key];
   const io=IDX_OUT[i], ir=IDX_RET[i];
   const out=LEGS[dt].out.filter(l=>l[0]&&l[io]).map(l=>[l[0][0], l[io][0], l[0][1]+l[io][1]]);
@@ -560,6 +589,22 @@ function nordPairs(dt,i){
 }
 const _im={};
 function islandOptions(dt,A,B){
+  const L=liveDay('nordoPairs',selDate);
+  if(L && L[A+'B'] && L['B'+B]){
+    const items=[];
+    for(const [dep,arr,note] of (L[A+B]||[]))
+      items.push({type:'direct', dep, arr, note:note||''});
+    const dd=new Set(items.map(o=>o.dep));
+    for(const [dep,barr,n1] of L[A+'B']){
+      if(dd.has(dep)) continue;
+      let best=null;
+      for(const [bdep,arr,n2] of L['B'+B])
+        if(M(bdep)>=M(barr) && (best===null||M(bdep)<M(best[0]))) best=[bdep,arr,n2];
+      if(best) items.push({type:'via', dep, barr, bdep:best[0], arr:best[1], note:(n1||'')+(best[2]||'')});
+    }
+    items.sort((x,y)=>M(x.dep)-M(y.dep));
+    return items;
+  }
   const key=dt+A+B; if(_im[key]) return _im[key];
   const items=[];
   const scan=(legs,IDX)=>{
@@ -727,7 +772,7 @@ window.addEventListener('resize', setHeadTop);
 /* ---------- popup: förklaring av tecken ---------- */
 const EXPL = {
   'tajt':['⚠︎','Tajt byte','Under 5 minuters marginal i bytet – var ute i god tid.'],
-  'X':['📞','Kallelsetur','Måste förbokas. Nordöleden & Björköleden: telefonsvarare <a href="tel:+46104761184">010‑476 11 84</a> (06:00–21:30), endast för kommande kväll/natt/morgon.'],
+  'X':['📞','Kallelsetur','<b>Nordöleden:</b> beställs på telefonsvarare <a href="tel:+46104761184">010‑476 11 84</a> (06:00–21:30), endast för kommande kväll/natt/morgon.<br><b>Björköleden:</b> turen kallas 10–5 minuter före avgångstid på <a href="tel:+46771656565">0771‑65 65 65</a>.'],
   'H':['H','Rörö i mån av plats','Fordon till/från Rörö lastas i mån av plats.'],
   'K':['K','Kvotering','Upp till halva lastkapaciteten reserveras för fordon från Hyppeln/Rörö. Bilen måste stå i färjekön 15 min innan avgång.'],
   'R':['R','Hyppeln i mån av plats','Fordon till/från Hyppeln lastas i mån av plats.'],
@@ -928,6 +973,25 @@ function _annQuery(key,routeId,from,to){
     `<INCLUDE>ToHarbor.Name</INCLUDE><INCLUDE>Deleted</INCLUDE><INCLUDE>Info</INCLUDE>`+
     `<INCLUDE>Route.Name</INCLUDE></QUERY></REQUEST>`;
 }
+function _expectedX(routeId,d){
+  const X={};
+  const add=(c,t)=>{ (X[c]=X[c]||new Set()).add(t); };
+  if(routeId==='23'){
+    const per=bjorkoPeriod(d); if(!per) return null;
+    per.lvX.forEach(t=>add('V',t)); per.bjX.forEach(t=>add('J',t));
+  } else if(routeId==='33'){
+    const dt=autoDayKey(d);
+    const walk=(legs,names)=>{
+      for(const leg of legs){
+        let last=-1;
+        for(let i=0;i<4;i++) if(leg[i]) last=i;
+        for(let i=0;i<4;i++) if(leg[i] && i!==last && /X/.test(leg[i][1]||'')) add(names[i], leg[i][0]);
+      }
+    };
+    walk(LEGS[dt].out,['B','K','H','R']); walk(LEGS[dt].ret,['R','H','K','B']);
+  }
+  return X;
+}
 function _group(rows){
   const byDay={};
   for(const a of rows){
@@ -935,9 +999,16 @@ function _group(rows){
     const t=a.DepartureTime, day=t.slice(0,10), hhmm=t.slice(11,16);
     const fc=_harbCode(a.FromHarbor&&a.FromHarbor.Name);
     const info=(a.Info||[]).join(' ').toLowerCase();
-    const kall=/kallelse|förbeställ|forbestall|beställ/.test(info);
+    const kall=/kallelsetur/.test(info);
+    const other=[];
+    if(/halva färjans lastkapacitet|plats reserveras/.test(info)) other.push('K');
+    if(/godstur/.test(info)) other.push('C');
+    if(/kort bytestid/.test(info)) other.push('L');
+    if(/går om passagerare/.test(info)) other.push('Z');
+    if(/i mån av plats/.test(info)) other.push('mån');
+    if(/lastas ej/.test(info)) other.push('ej');
     byDay[day]=byDay[day]||{};
-    (byDay[day][fc]=byDay[day][fc]||[]).push({t:hhmm,kall,
+    (byDay[day][fc]=byDay[day][fc]||[]).push({t:hhmm,kall,other,
       from:(a.FromHarbor&&a.FromHarbor.Name)||'?', to:(a.ToHarbor&&a.ToHarbor.Name)||'?'});
   }
   return byDay;
@@ -992,6 +1063,22 @@ async function runFetch(){
               line+='\n';
             }
           }
+          const expX=_expectedX(rid,d);
+          if(expX){
+            for(const c of Object.keys(byDay[day]).sort()){
+              const apiX=[...new Set(byDay[day][c].filter(x=>x.kall).map(x=>x.t))].sort();
+              const eX=[...(expX[c]||new Set())].sort();
+              const mx=eX.filter(t=>!apiX.includes(t));
+              const ex=apiX.filter(t=>!eX.includes(t));
+              if(mx.length||ex.length){
+                diffs++;
+                line+='    '+c+' kallelsetur: '+apiX.length+' i API / '+eX.length+' i appen';
+                if(ex.length) line+=' · nya: '+ex.join(' ');
+                if(mx.length) line+=' · ej längre: '+mx.join(' ');
+                line+='\n';
+              }
+            }
+          }
           if(diffs){ allOk=false; o+='  '+day+' ('+DAG[d.getDay()]+') AVVIKER\n'+line; }
         }
         if(dayKeys.every(day=>{
@@ -1002,7 +1089,15 @@ async function runFetch(){
             const expT=[...(exp[c]||new Set())].sort();
             return JSON.stringify(apiT)===JSON.stringify(expT);
           });
-        })) o+='  ✓ stämmer alla '+dayKeys.length+' dagar\n';
+        })) o+='  ✓ tider stämmer alla '+dayKeys.length+' dagar\n';
+        const tally={};
+        for(const day of dayKeys) for(const c of Object.keys(byDay[day]))
+          for(const x of byDay[day][c]){
+            if(x.kall) tally['X']=(tally['X']||0)+1;
+            for(const k of (x.other||[])) tally[k]=(tally[k]||0)+1;
+          }
+        const tk=Object.keys(tally).sort();
+        if(tk.length) o+='  anmärkningar i API: '+tk.map(k=>k+'='+tally[k]).join(' ')+'\n';
       }
       o+='\n'+(allOk?'ALLT STÄMMER – inga uppdateringar behövs.':'AVVIKELSER HITTADE – skicka den här texten till Claude.');
       o+='\n\nLinje 296: ingen API-källa (Västtrafik). Tidtabellen i appen gäller t.o.m. 2026-12-12.';
@@ -1225,7 +1320,7 @@ function openTripModal(i){
     labels=['Varh. avg','Hönö ank','Burö avg',ISN+' ank','Byte','Restid'];
     leg1='Varholmen–Hönö'; leg2='Burö–'+ISN;
     cw=span(tp.a+total,tp.c); cr=span(tp.a,tp.d);
-    const a2=prevIn(hono[honoKey()].lv, tp.a);
+    const a2=prevIn(honoTimes('lv'), tp.a);
     earlier = a2!==null ? tripRow([a2,a2+CROSS,tp.c,tp.d], span(a2+total,tp.c), span(a2,tp.d),'it',[0,1]) : tripNone('Ingen tidigare avgång');
     const nx=nordAdj(nordPairs(nordKey(),isl).out, tp.c, +1);
     later = nx ? tripRow([tp.a,tp.b,M(nx[0]),M(nx[1])], span(tp.a+total,M(nx[0])), span(tp.a,M(nx[1])),'it',[2,3]) : tripNone('Ingen senare avgång');
@@ -1235,7 +1330,7 @@ function openTripModal(i){
     cw=span(tp.b+drive,tp.c); cr=span(tp.a,tp.d);
     const pv=nordAdj(nordPairs(nordKey(),isl).ret, tp.a, -1);
     earlier = pv ? tripRow([M(pv[0]),M(pv[1]),tp.c,tp.d], span(M(pv[1])+drive,tp.c), span(M(pv[0]),tp.d),'it',[0,1]) : tripNone('Ingen tidigare avgång');
-    const c2=nextIn(hono[honoKey()].hono, tp.c);
+    const c2=nextIn(honoTimes('hono'), tp.c);
     later = c2!==null ? tripRow([tp.a,tp.b,c2,c2+CROSS], span(tp.b+drive,c2), span(tp.a,c2+CROSS),'it',[2,3]) : tripNone('Ingen senare avgång');
   }
   const chosen=tripRow([tp.a,tp.b,tp.c,tp.d], cw, cr, 'chosen', null);
@@ -1324,7 +1419,7 @@ function render(){
         <th><span class="pl">Anm</span></th></tr>`;
     for(const [b,r,note] of nordPairs(nordKey(),isl).out){
       const bDep=M(b), target=bDep-total;
-      const {t:lv,wrap}=latestLE(hono[honoKey()].lv, target);
+      const {t:lv,wrap}=latestLE(honoTimes('lv'), target);
       const wait=span(lv+total, bDep);
       const tajt=wait<5, kall=/X/.test(note);
       if(tajt)tajtN++; if(kall)kallN++;
@@ -1347,7 +1442,7 @@ function render(){
         <th><span class="pl">Anm</span></th></tr>`;
     for(const [dep,arr,note] of nordPairs(nordKey(),isl).ret){
       const bArr=M(arr), target=bArr+drive;
-      const {t:hDep,wrap}=nextGE(hono[honoKey()].hono, target);
+      const {t:hDep,wrap}=nextGE(honoTimes('hono'), target);
       const wait=span(bArr+drive, hDep);
       const tajt=wait<5, kall=/X/.test(note);
       if(tajt)tajtN++; if(kall)kallN++;
@@ -1578,7 +1673,7 @@ function render(){
       html:`<td colspan="3" style="padding:16px 12px;color:var(--ink);font-weight:700;font-size:13px">Grönevik och Framnäs ligger båda på Björkö – ca ${walk} min promenad mellan färjelägena. 🚶</td>`});
   } else if(dir==='honoOut' || dir==='honoRet'){
     ncol=3;
-    const list = dir==='honoOut' ? hono[honoKey()].lv : hono[honoKey()].hono;
+    const list = dir==='honoOut' ? honoTimes('lv') : honoTimes('hono');
     const l1 = dir==='honoOut' ? 'Varh.' : 'Hönö';
     const l2 = dir==='honoOut' ? 'Hönö' : 'Varh.';
     head = `<tr class="grouprow"><th colspan="3">Hönöleden</th></tr>
@@ -1730,6 +1825,7 @@ $('tbody').addEventListener('click', e=>{
 
 syncRoute();
 render();
+loadLive();
 setInterval(render, 30000);   // flytta nu-strecket löpande
 </script>
 </body>
