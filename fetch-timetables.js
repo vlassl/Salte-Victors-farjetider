@@ -7,7 +7,8 @@ const { writeFileSync, readFileSync, existsSync, mkdirSync, appendFileSync } = r
 const KEY = process.env.TRV_KEY;
 if (!KEY) { console.error('TRV_KEY saknas'); process.exit(1); }
 
-const DAYS = 14;
+const DAYS_NEAR = 14;      // laddas direkt när appen startar
+const DAYS_TOTAL = 120;   // resten laddas först när man väljer ett datum långt fram
 const ROUTES = { hono: 28, bjorko: 23, nordo: 33 };
 const API = 'https://api.trafikinfo.trafikverket.se/v2/data.json';
 
@@ -52,7 +53,7 @@ const KNOWN = [
 
 async function main(){
 const today = new Date();
-const end = new Date(today); end.setDate(end.getDate() + DAYS);
+const end = new Date(today); end.setDate(end.getDate() + DAYS_TOTAL);
 const unknownInfo = new Set();
 const deviations = [];
 const days = {};
@@ -161,13 +162,24 @@ for (const day of Object.values(days))
   for (const route of Object.values(day))
     for (const k of Object.keys(route)) route[k] = [...new Set(route[k])].sort();
 
-writeFileSync('data.json', JSON.stringify({
+// Dela upp: närmaste dagarna i data.json, resten i data-far.json
+const cut = new Date(today); cut.setDate(cut.getDate() + DAYS_NEAR);
+const cutIso = iso(cut);
+const near = {}, far = {};
+for (const [day, val] of Object.entries(days)) (day < cutIso ? near : far)[day] = val;
+
+const meta = {
   generated: new Date().toISOString(),
   source: 'Trafikverket öppna API (FerryAnnouncement 1.2)',
-  note: 'Avgångstider per hamn och datum. Ankomsttider för Nordöleden finns ej i API:et.',
-  days
-}, null, 1));
-console.log(`data.json: ${Object.keys(days).length} dagar`);
+  note: 'Avgångstider per hamn och datum. Ankomsttider för Nordöleden finns ej i API:et.'
+};
+writeFileSync('data.json', JSON.stringify({ ...meta, days: near }, null, 1));
+writeFileSync('data-far.json', JSON.stringify({ ...meta, days: far }, null, 1));
+const kb = f => Math.round(require('node:fs').statSync(f).size / 1024);
+console.log(`data.json: ${Object.keys(near).length} dagar (${kb('data.json')} kB)`);
+console.log(`data-far.json: ${Object.keys(far).length} dagar (${kb('data-far.json')} kB)`);
+if (Object.keys(days).length < DAYS_TOTAL - 2)
+  console.log(`OBS: API:et gav bara ${Object.keys(days).length} dagar av ${DAYS_TOTAL} begärda.`);
 
 // --- logg för framtida analys ---
 mkdirSync('log', { recursive: true });

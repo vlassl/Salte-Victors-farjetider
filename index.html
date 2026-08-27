@@ -407,7 +407,7 @@
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 19</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 21</span></p>
     </div>
   </details>
 </div>
@@ -490,6 +490,27 @@ function honoTimes(which){          // 'lv' eller 'hono'
   const key = which==='lv' ? 'V' : 'O';
   if(L&&L[key]&&L[key].length) return L[key].map(M);
   return hono[honoKey()][which];
+}
+let FAR_STATE='idle';           // idle | loading | done | fail
+async function loadFar(){
+  if(FAR_STATE!=='idle') return;
+  FAR_STATE='loading'; render();
+  try{
+    const r=await fetch('data-far.json?'+Date.now(), {cache:'no-store'});
+    if(!r.ok) throw 0;
+    const d=await r.json();
+    if(d&&d.days){ LIVE=LIVE||{days:{}}; Object.assign(LIVE.days, d.days); FAR_STATE='done'; }
+    else FAR_STATE='fail';
+  }catch(e){ FAR_STATE='fail'; }
+  render();
+}
+// Behövs fjärrdata för valt datum?
+function maybeLoadFar(){
+  if(!LIVE || FAR_STATE!=='idle') return;
+  const iso=_isoD(selDate);
+  if(LIVE.days[iso]) return;                       // redan täckt
+  if(iso < _isoD(new Date())) return;              // bakåt i tiden – inget att hämta
+  loadFar();
 }
 async function loadLive(){
   try{
@@ -745,7 +766,7 @@ function updateDateUI(){
 function setDate(v){
   if(v){ const [y,m,d]=v.split('-').map(Number); selDate=new Date(y,m-1,d); }
   else { selDate=new Date(); }   // Återställ i datumväljaren = idag
-  showEarlier=false; render();
+  showEarlier=false; render(); maybeLoadFar();
 }
 function toggleEarlier(){showEarlier=!showEarlier;render();}
 function setDrive(v){ v=Math.max(1,Math.min(40, parseInt(v,10)||10)); drive=v; const el=$('drv'); if(el) el.value=v; render(); }
@@ -1270,7 +1291,14 @@ function openTablesModal(){
       +'<br><br><b>Grötö → Öckerö:</b><br>'+line(L296[dt].ret,L296.stopsRet);
   };
   h+='<div class="tbl-sec"><b>Linje 296</b> · Öckerö ⇄ Kalvsund ⇄ Framnäs ⇄ Grötö · personfärja</div>';
-  h+='<div class="tbl-note">Gäller 14 dec 2025 – 12 dec 2026. D = förbeställs 30 min innan. C = går inte vissa helgdagar. Andra Kalvsund-anlöpet: endast avstigning.</div>';
+  const _d296=x=>new Date(Math.floor(x/10000), Math.floor(x/100)%100-1, x%100);
+  const dl=Math.round((_d296(L296.to)-new Date())/86400000);
+  const status = dl<0
+    ? '<b style="color:var(--sea)">Tidtabellen har gått ut – ny behöver läggas in.</b>'
+    : dl<=45
+      ? '<b style="color:var(--sea)">Går ut om '+dl+' dagar – dags att hämta ny tidtabell.</b>'
+      : 'Giltig '+dl+' dagar till.';
+  h+='<div class="tbl-note">Gäller 14 dec 2025 – 12 dec 2026. '+status+'<br>D = förbeställs 30 min innan. C = går inte vissa helgdagar. Andra Kalvsund-anlöpet: endast avstigning.<br><span style="opacity:.85">Uppdateras manuellt – Västtrafik finns inte i Trafikverkets API.</span></div>';
   h+=_det('Måndag–fredag', l296Body('vardag'));
   h+=_det('Lördag–söndag & helgdag', l296Body('helg'));
   $('modalTitle').textContent='Tidtabeller & perioder';
@@ -1806,12 +1834,20 @@ function updateWarnings(){
   const u296=['g296','v296Out','v296Ret','jwalkOut','jwalkRet'].includes(dir);
   const uBj =['bjOut','bjRet','v296Out','v296Ret','vfrOut','vfrRet'].includes(dir);
   const uNord=['out','ret','isl','drvOut','drvRet'].includes(dir);
+  const _d=x=>new Date(Math.floor(x/10000), Math.floor(x/100)%100-1, x%100);
+  const daysLeft = Math.round((_d(L296.to)-new Date())/86400000);
   if(u296 && (n<L296.from||n>L296.to))
-    w.push('⚠︎ Linje 296: valt datum ligger utanför tidtabellens giltighet (14 dec 2025 – 12 dec 2026). Visade tider kan vara inaktuella.');
+    w.push('⚠︎ Linje 296: valt datum ligger utanför tidtabellens giltighet (14 dec 2025 – 12 dec 2026). Visade tider kan vara inaktuella – hämta ny tidtabell från Västtrafik.');
+  else if(u296 && daysLeft<=45)
+    w.push('⚠︎ Linje 296: tidtabellen går ut om '+daysLeft+' dagar (12 dec 2026). Ny tidtabell behöver läggas in.');
   if(uBj && !bjorkoPeriod(selDate))
     w.push('⚠︎ Björköleden: ingen tidtabell är inlagd för valt datum.');
   if(uNord && n<20260525)
     w.push('⚠︎ Nordöleden: tidtabellen gäller från 25 maj 2026 – tider före detta datum kan avvika.');
+  if(FAR_STATE==='loading')
+    w.unshift('Hämtar tidtabell för valt datum…');
+  else if(FAR_STATE==='fail' && !liveDay('hono',selDate))
+    w.unshift('⚠︎ Kunde inte hämta tider för valt datum – visar ordinarie tidtabell. Tillfälliga ändringar kan saknas.');
   const wb=$('warnbox');
   if(w.length){ wb.innerHTML=w.join('<br>'); wb.removeAttribute('hidden'); }
   else wb.setAttribute('hidden','');
