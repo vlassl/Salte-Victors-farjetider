@@ -407,7 +407,7 @@
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 8</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 11</span></p>
     </div>
   </details>
 </div>
@@ -434,7 +434,7 @@ const hono = {
       10:[0,10,20,30,40,50],11:[0,10,20,30,40,50],12:[0,10,20,30,40,50],13:[0,10,20,30,40,50],
       14:[0,10,20,30,40,50],15:[0,10,20,30,40,50],16:[0,10,20,30,40,50],17:[0,10,20,30,40,50],
       18:[0,10,20,40],19:[0,20,40],20:[0,20,40],21:[0,20,40],22:[0,20,40],23:[10,40]}),
-    hono:E({0:[25,55],1:[50],2:[50],3:[50],4:[50],5:[50],6:[50],7:[20,50],8:[20,40],9:[0,20,40],
+    hono:E({0:[25,55],1:[50],2:[50],3:[50],4:[50],5:[50],6:[50],7:[20,50],8:[20,40],9:[0,20,40,50],
       10:[0,10,20,30,40,50],11:[0,10,20,30,40,50],12:[0,10,20,30,40,50],13:[0,10,20,30,40,50],
       14:[0,10,20,30,40,50],15:[0,10,20,30,40,50],16:[0,10,20,30,40,50],17:[0,10,20,30,40,50],
       18:[0,20,40],19:[0,20,40],20:[0,20,40],21:[0,20,40],22:[0,20,50],23:[25,55]})
@@ -466,6 +466,11 @@ const BJORKO={cross:6, periods:[
    lvX:['04:10','05:10'],
    bj:['00:00','01:00','02:00','03:00','04:00','05:00','06:00','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00','21:30','22:00','22:30','23:00'],
    bjX:['04:00','05:00']},
+  {from:20200101, to:20271231, dow:[0,6],
+   lv:['00:10','01:10','02:10','03:10','04:10','05:10','06:10','07:10','07:40','08:10','08:40','09:10','09:40','10:10','10:40','11:10','11:40','12:10','12:40','13:10','13:40','14:10','14:40','15:10','15:40','16:10','16:40','17:10','17:40','18:10','18:40','19:10','19:40','20:10','20:40','21:10','21:40','22:10','22:40','23:10'],
+   lvX:['02:10','03:10','04:10'],
+   bj:['00:00','01:00','02:00','03:00','04:00','05:00','06:00','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00','21:30','22:00','22:30','23:00'],
+   bjX:['02:00','03:00','04:00']},
   {from:20200101, to:20271231,
    lv:['00:10','01:10','02:10','03:10','04:10','05:10','05:40','06:10','06:30','06:50','07:10','07:30','07:50','08:10','08:40','09:10','09:40','10:10','10:40','11:10','11:40','12:10','12:40','13:10','13:40','14:10','14:40','15:10','15:30','15:50','16:10','16:30','16:50','17:10','17:30','17:50','18:10','18:40','19:10','19:40','20:10','20:40','21:10','21:40','22:10','22:40','23:10'],
    lvX:['02:10','03:10','04:10'],
@@ -826,6 +831,7 @@ function openFetchModal(){
       <option value="ann">Tidtabell för led (kompakt)</option>
       <option value="bjorko">Björkö → färdigt datablock</option>
       <option value="raw">Rå JSON (felsökning)</option>
+      <option value="fields">Alla fält – nattens turer (utforska)</option>
       <option value="routes">Lista alla färjeleder</option>
     </select>
     <label>Led</label>
@@ -1002,6 +1008,21 @@ async function runFetch(){
       return;
     }
     if(route==='all') route='28';
+    if(what==='fields'){
+      // Hämtar ALLA fält (ingen INCLUDE) för nattens första turer,
+      // där kallelseturer/anmärkningar finns.
+      const q=`<REQUEST><LOGIN authenticationkey="${key}"/>`+
+        `<QUERY objecttype="FerryAnnouncement" schemaversion="1.2" limit="8" orderby="DepartureTime">`+
+        `<FILTER><EQ name="Route.Id" value="${route}"/>`+
+        `<GTE name="DepartureTime" value="${iso(base)}T00:00:00"/>`+
+        `<LT name="DepartureTime" value="${iso(base)}T07:00:00"/></FILTER></QUERY></REQUEST>`;
+      const res=await _apiCall(key,q);
+      const rows=res.FerryAnnouncement||[];
+      out.value='### Alla fält, led '+route+', '+iso(base)+' kl 00–07 ('+rows.length+' turer)\n'+
+        JSON.stringify(rows,null,1).slice(0,120000);
+      return;
+    }
+
     const res=await _apiCall(key,_annQuery(key,route,iso(base),iso(dEnd)));
     const rows=(res.FerryAnnouncement||[]).filter(x=>!x.Deleted);
     if(what==='raw'){ out.value=JSON.stringify(rows.slice(0,40),null,1).slice(0,120000); return; }
