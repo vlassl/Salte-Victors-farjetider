@@ -407,7 +407,7 @@
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 6</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 8</span></p>
     </div>
   </details>
 </div>
@@ -822,11 +822,24 @@ function openFetchModal(){
     <input id="trvkey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="32 tecken" value="${saved}">
     <label>Vad ska hämtas?</label>
     <select id="trvwhat">
-      <option value="routes">1. Lista alla färjeleder (börja här)</option>
-      <option value="ann">2. Avgångar för vald led</option>
+      <option value="check">Kolla om appens tider stämmer</option>
+      <option value="ann">Tidtabell för led (kompakt)</option>
+      <option value="bjorko">Björkö → färdigt datablock</option>
+      <option value="raw">Rå JSON (felsökning)</option>
+      <option value="routes">Lista alla färjeleder</option>
     </select>
-    <label>Led-ID / sökord (för steg 2)</label>
-    <input id="trvroute" type="text" autocomplete="off" placeholder="t.ex. Hönöleden">
+    <label>Led</label>
+    <select id="trvroute">
+      <option value="all">Alla leder (för kontroll)</option>
+      <option value="28">28 – Hönöleden</option>
+      <option value="23">23 – Björköleden</option>
+      <option value="33">33 – Nordöleden</option>
+    </select>
+    <label>Från datum · antal dagar</label>
+    <div style="display:flex;gap:7px">
+      <input id="trvdate" type="date" style="flex:2">
+      <input id="trvdays" type="number" min="1" max="14" value="7" style="flex:1">
+    </div>
     <div class="btnrow">
       <button onclick="runFetch()">Hämta</button>
       <button class="sec" onclick="copyFetch()">Kopiera svar</button>
@@ -834,9 +847,11 @@ function openFetchModal(){
     </div>
     <label>Svar</label>
     <textarea id="trvout" readonly placeholder="Resultatet visas här – kopiera och klistra in i chatten."></textarea>
-    <div class="hint">Nyckeln lagras bara på den här enheten (om du trycker Spara nyckel) och skickas aldrig någon annanstans än till Trafikverket.</div>
+    <div class="hint">Kör en led i taget: Hönöleden, Björköleden, Nordöleden. Nyckeln lagras bara på den här enheten (om du trycker Spara nyckel) och skickas aldrig någon annanstans än till Trafikverket.</div>
   </div>`;
   $('modal').classList.add('open');
+  const z=n=>String(n).padStart(2,'0'), t=new Date();
+  $('trvdate').value=t.getFullYear()+'-'+z(t.getMonth()+1)+'-'+z(t.getDate());
 }
 function saveKey(){
   try{ localStorage.setItem('trvkey', $('trvkey').value.trim()); $('trvout').value='Nyckeln sparad på den här enheten.'; }
@@ -849,35 +864,173 @@ function copyFetch(){
   if(navigator.clipboard) navigator.clipboard.writeText(t.value).catch(()=>{});
   t.setAttribute('readonly','');
 }
+function _harbCode(n){
+  n=(n||'').toLowerCase();
+  if(n.includes('varholmen')) return 'V';
+  if(n.includes('hönö')||n.includes('hono')) return 'O';
+  if(n.includes('björkö')||n.includes('bjorko')||n.includes('grönevik')) return 'J';
+  if(n.includes('burö')||n.includes('buro')) return 'B';
+  if(n.includes('knippla')) return 'K';
+  if(n.includes('hyppeln')) return 'H';
+  if(n.includes('rörö')||n.includes('roro')) return 'R';
+  return '?';
+}
+// Förväntade avgångstider per hamn enligt appens inbäddade data
+function _expected(routeId, d){
+  const exp={};
+  const add=(c,t)=>{ (exp[c]=exp[c]||new Set()).add(t); };
+  if(routeId==='28'){
+    const k = autoDayKey(d)==='vardag' ? 'vardag' : 'helg';
+    hono[k].lv.forEach(m=>add('V',HH(m)));
+    hono[k].hono.forEach(m=>add('O',HH(m)));
+  } else if(routeId==='23'){
+    const per=bjorkoPeriod(d);
+    if(!per) return null;
+    per.lv.forEach(t=>add('V',t));
+    per.bj.forEach(t=>add('J',t));
+  } else if(routeId==='33'){
+    const dt=autoDayKey(d);
+    const walk=(legs,names)=>{
+      for(const leg of legs){
+        let last=-1;
+        for(let i=0;i<4;i++) if(leg[i]) last=i;
+        for(let i=0;i<4;i++) if(leg[i] && i!==last) add(names[i], leg[i][0]);
+      }
+    };
+    walk(LEGS[dt].out, ['B','K','H','R']);
+    walk(LEGS[dt].ret, ['R','H','K','B']);
+  }
+  return exp;
+}
+async function _apiCall(key,q){
+  const r=await fetch('https://api.trafikinfo.trafikverket.se/v2/data.json',
+    {method:'POST', headers:{'Content-Type':'text/plain'}, body:q});
+  const txt=await r.text();
+  if(r.status!==200) throw new Error('HTTP '+r.status+' '+txt.slice(0,300));
+  const d=JSON.parse(txt);
+  return (d.RESPONSE&&d.RESPONSE.RESULT&&d.RESPONSE.RESULT[0])||{};
+}
+function _annQuery(key,routeId,from,to){
+  return `<REQUEST><LOGIN authenticationkey="${key}"/>`+
+    `<QUERY objecttype="FerryAnnouncement" schemaversion="1.2" limit="4000" orderby="DepartureTime">`+
+    `<FILTER><EQ name="Route.Id" value="${routeId}"/>`+
+    `<GTE name="DepartureTime" value="${from}T00:00:00"/>`+
+    `<LT name="DepartureTime" value="${to}T00:00:00"/></FILTER>`+
+    `<INCLUDE>DepartureTime</INCLUDE><INCLUDE>FromHarbor.Name</INCLUDE>`+
+    `<INCLUDE>ToHarbor.Name</INCLUDE><INCLUDE>Deleted</INCLUDE><INCLUDE>Info</INCLUDE>`+
+    `<INCLUDE>Route.Name</INCLUDE></QUERY></REQUEST>`;
+}
+function _group(rows){
+  const byDay={};
+  for(const a of rows){
+    if(a.Deleted) continue;
+    const t=a.DepartureTime, day=t.slice(0,10), hhmm=t.slice(11,16);
+    const fc=_harbCode(a.FromHarbor&&a.FromHarbor.Name);
+    const info=(a.Info||[]).join(' ').toLowerCase();
+    const kall=/kallelse|förbeställ|forbestall|beställ/.test(info);
+    byDay[day]=byDay[day]||{};
+    (byDay[day][fc]=byDay[day][fc]||[]).push({t:hhmm,kall,
+      from:(a.FromHarbor&&a.FromHarbor.Name)||'?', to:(a.ToHarbor&&a.ToHarbor.Name)||'?'});
+  }
+  return byDay;
+}
 async function runFetch(){
-  const key=$('trvkey').value.trim(), what=$('trvwhat').value, route=$('trvroute').value.trim();
+  const key=$('trvkey').value.trim(), what=$('trvwhat').value;
+  let route=$('trvroute').value;
   const out=$('trvout');
   if(!key){ out.value='Fyll i API-nyckeln först.'; return; }
-  let q;
-  if(what==='routes'){
-    q=`<REQUEST><LOGIN authenticationkey="${key}"/>`+
-      `<QUERY objecttype="FerryRoute" schemaversion="1.2" limit="300">`+
-      `<INCLUDE>Id</INCLUDE><INCLUDE>Name</INCLUDE><INCLUDE>Type</INCLUDE><INCLUDE>Shortname</INCLUDE>`+
-      `</QUERY></REQUEST>`;
-  } else {
-    const f = /^[0-9]+$/.test(route)
-      ? `<EQ name="Route.Id" value="${route}"/>`
-      : `<LIKE name="Route.Name" value="/${route}/i"/>`;
-    q=`<REQUEST><LOGIN authenticationkey="${key}"/>`+
-      `<QUERY objecttype="FerryAnnouncement" schemaversion="1.2" limit="500" orderby="DepartureTime">`+
-      `<FILTER>${f}</FILTER></QUERY></REQUEST>`;
-  }
+  const z=n=>String(n).padStart(2,'0');
+  const iso=d=>d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());
+  const dv=$('trvdate').value;
+  const base=dv?new Date(dv+'T00:00:00'):new Date();
+  const days=Math.max(1,Math.min(14,parseInt($('trvdays').value,10)||7));
+  const dEnd=new Date(base); dEnd.setDate(dEnd.getDate()+days);
+  const DAG=['sön','mån','tis','ons','tors','fre','lör'];
   out.value='Hämtar…';
   try{
-    const r=await fetch('https://api.trafikinfo.trafikverket.se/v2/data.json',
-      {method:'POST', headers:{'Content-Type':'text/plain'}, body:q});
-    const txt=await r.text();
-    let pretty=txt;
-    try{ pretty=JSON.stringify(JSON.parse(txt), null, 1); }catch(e){}
-    out.value='HTTP '+r.status+'\n'+pretty.slice(0,120000);
-  }catch(e){
-    out.value='Fel vid anrop: '+e.message+'\n(Kan bero på nätverk eller CORS.)';
-  }
+    if(what==='routes'){
+      const res=await _apiCall(key,`<REQUEST><LOGIN authenticationkey="${key}"/>`+
+        `<QUERY objecttype="FerryRoute" schemaversion="1.2" limit="300">`+
+        `<INCLUDE>Id</INCLUDE><INCLUDE>Name</INCLUDE></QUERY></REQUEST>`);
+      out.value=(res.FerryRoute||[]).map(x=>x.Id+' | '+x.Name).join('\n');
+      return;
+    }
+    if(what==='check'){
+      const leds = route==='all' ? [['28','Hönöleden'],['23','Björköleden'],['33','Nordöleden']]
+                                 : [[route,{'28':'Hönöleden','23':'Björköleden','33':'Nordöleden'}[route]]];
+      let o='### Kontroll mot appens tider · '+iso(base)+' + '+days+' dagar\n';
+      let allOk=true;
+      for(const [rid,rname] of leds){
+        const res=await _apiCall(key,_annQuery(key,rid,iso(base),iso(dEnd)));
+        const byDay=_group(res.FerryAnnouncement||[]);
+        o+='\n'+rname+' (led '+rid+')\n';
+        const dayKeys=Object.keys(byDay).sort();
+        if(!dayKeys.length){ o+='  inga avgångar i svaret\n'; continue; }
+        for(const day of dayKeys){
+          const d=new Date(day+'T12:00:00');
+          const exp=_expected(rid,d);
+          if(exp===null){ o+='  '+day+' ('+DAG[d.getDay()]+'): appen saknar tabell för datumet\n'; allOk=false; continue; }
+          let line='', diffs=0;
+          for(const c of Object.keys(byDay[day]).sort()){
+            const apiT=[...new Set(byDay[day][c].map(x=>x.t))].sort();
+            const expT=[...(exp[c]||new Set())].sort();
+            const miss=expT.filter(t=>!apiT.includes(t));
+            const extra=apiT.filter(t=>!expT.includes(t));
+            if(miss.length||extra.length){
+              diffs++;
+              line+='    '+c+': '+apiT.length+' i API / '+expT.length+' i appen';
+              if(extra.length) line+=' · nya: '+extra.join(' ');
+              if(miss.length)  line+=' · borttagna: '+miss.join(' ');
+              line+='\n';
+            }
+          }
+          if(diffs){ allOk=false; o+='  '+day+' ('+DAG[d.getDay()]+') AVVIKER\n'+line; }
+        }
+        if(dayKeys.every(day=>{
+          const d=new Date(day+'T12:00:00'), exp=_expected(rid,d);
+          if(!exp) return false;
+          return Object.keys(byDay[day]).every(c=>{
+            const apiT=[...new Set(byDay[day][c].map(x=>x.t))].sort();
+            const expT=[...(exp[c]||new Set())].sort();
+            return JSON.stringify(apiT)===JSON.stringify(expT);
+          });
+        })) o+='  ✓ stämmer alla '+dayKeys.length+' dagar\n';
+      }
+      o+='\n'+(allOk?'ALLT STÄMMER – inga uppdateringar behövs.':'AVVIKELSER HITTADE – skicka den här texten till Claude.');
+      o+='\n\nLinje 296: ingen API-källa (Västtrafik). Tidtabellen i appen gäller t.o.m. 2026-12-12.';
+      out.value=o;
+      return;
+    }
+    if(route==='all') route='28';
+    const res=await _apiCall(key,_annQuery(key,route,iso(base),iso(dEnd)));
+    const rows=(res.FerryAnnouncement||[]).filter(x=>!x.Deleted);
+    if(what==='raw'){ out.value=JSON.stringify(rows.slice(0,40),null,1).slice(0,120000); return; }
+    if(!rows.length){ out.value='Inga avgångar i svaret.'; return; }
+    const byDay=_group(rows);
+    const rname=(rows[0].Route&&rows[0].Route.Name)||('led '+route);
+    if(what==='bjorko'){
+      let o='### Björkö-datablock · '+iso(base)+' + '+days+' dagar\n(* = API:t flaggar kallelse/förbeställning)\n';
+      for(const day of Object.keys(byDay).sort()){
+        const d=new Date(day+'T12:00:00');
+        o+='\n'+day+' ('+DAG[d.getDay()]+')\n';
+        const V=(byDay[day]['V']||[]), J=(byDay[day]['J']||[]);
+        const fmt=l=>l.map(x=>x.t+(x.kall?'*':'')).join(' ');
+        o+='  lv: '+fmt(V)+'\n  bj: '+fmt(J)+'\n';
+      }
+      out.value=o;
+      return;
+    }
+    let o='### '+rname+' (led '+route+')\n';
+    for(const day of Object.keys(byDay).sort()){
+      const d=new Date(day+'T12:00:00');
+      o+='\n'+day+' ('+DAG[d.getDay()]+')\n';
+      for(const c of Object.keys(byDay[day]).sort()){
+        const l=byDay[day][c];
+        o+='  '+l[0].from+' ['+l.length+']: '+l.map(x=>x.t+(x.kall?'*':'')).join(' ')+'\n';
+      }
+    }
+    out.value=o;
+  }catch(e){ out.value='Fel: '+e.message; }
 }
 function openTablesModal(){
   let h='';
