@@ -407,7 +407,7 @@
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 13</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 14</span></p>
     </div>
   </details>
 </div>
@@ -831,6 +831,7 @@ function openFetchModal(){
       <option value="ann">Tidtabell för led (kompakt)</option>
       <option value="bjorko">Björkö → färdigt datablock</option>
       <option value="raw">Rå JSON (felsökning)</option>
+      <option value="build">Bygg datablock (turer + anmärkningar)</option>
       <option value="notes">Anmärkningar – unika texter</option>
       <option value="fields">Alla fält – nattens turer (utforska)</option>
       <option value="routes">Lista alla färjeleder</option>
@@ -1009,6 +1010,61 @@ async function runFetch(){
       return;
     }
     if(route==='all') route = (what==='fields') ? '33' : '28';
+    if(what==='build'){
+      const res=await _apiCall(key,_annQuery(key,route,iso(base),iso(dEnd)));
+      const rows=(res.FerryAnnouncement||[]).filter(x=>!x.Deleted)
+        .sort((a,b)=>a.DepartureTime<b.DepartureTime?-1:1);
+      // koda anmärkningar
+      const CODE=[
+        [/kallelsetur/i,'X'],
+        [/halva färjans lastkapacitet|plats reserveras/i,'K'],
+        [/godstur/i,'C'],
+        [/kort bytestid|inväntar anslutande buss/i,'L'],
+        [/går om passagerare/i,'Z'],
+        [/från rörö lastas i mån/i,'fR'],
+        [/till rörö lastas i mån/i,'tR'],
+        [/från hyppeln lastas i mån/i,'fH'],
+        [/till hyppeln lastas i mån/i,'tH'],
+        [/till\/från källo-knippla lastas i mån|till\/från källö-knippla lastas i mån/i,'A'],
+        [/till källö-knippla lastas ej/i,'G'],
+        [/från källö-knippla lastas ej/i,'gK'],
+        [/till burö lastas ej/i,'E'],
+        [/^färja\s*(\d)/i,'F$1']
+      ];
+      const codeOf=info=>{
+        const out=[];
+        for(const t of (info||[])){
+          const tt=t.trim();
+          const fm=tt.match(/^färja\s*(\d)/i);
+          if(fm){ out.push('F'+fm[1]); continue; }
+          for(const [re,c] of CODE){ if(c[0]!=='F' && re.test(tt)){ out.push(c); break; } }
+        }
+        return out;
+      };
+      const DAG=['sön','mån','tis','ons','tors','fre','lör'];
+      const byDay={};
+      for(const a of rows){
+        const day=a.DepartureTime.slice(0,10);
+        (byDay[day]=byDay[day]||[]).push(a);
+      }
+      let o='### Datablock · led '+route+' · '+iso(base)+' + '+days+' dagar\n';
+      o+='Format: HH:MM Från→Till [koder]\n';
+      o+='Koder: X=kallelse K=kvotering C=godstur L=väntar buss Z=vid behov\n';
+      o+='  tR/fR=till/från Rörö i mån av plats · tH/fH=Hyppeln · A=Knippla i mån\n';
+      o+='  G=ej till Knippla · gK=ej från Knippla · E=ej till Burö · F1/F2=färja\n';
+      for(const day of Object.keys(byDay).sort()){
+        const d=new Date(day+'T12:00:00');
+        o+='\n== '+day+' ('+DAG[d.getDay()]+') · '+byDay[day].length+' ben ==\n';
+        for(const a of byDay[day]){
+          const c=codeOf(a.Info);
+          o+=a.DepartureTime.slice(11,16)+' '+
+             ((a.FromHarbor&&a.FromHarbor.Name)||'?')+'→'+((a.ToHarbor&&a.ToHarbor.Name)||'?')+
+             (c.length?' ['+c.join(',')+']':'')+'\n';
+        }
+      }
+      out.value=o;
+      return;
+    }
     if(what==='notes'){
       const res=await _apiCall(key,_annQuery(key,route,iso(base),iso(dEnd)));
       const rows=(res.FerryAnnouncement||[]).filter(x=>!x.Deleted);
