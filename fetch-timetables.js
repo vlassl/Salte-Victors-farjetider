@@ -56,6 +56,7 @@ const today = new Date();
 const end = new Date(today); end.setDate(end.getDate() + DAYS_TOTAL);
 const unknownInfo = new Set();
 const deviations = [];
+const devIds = {};
 const days = {};
 const rawLegs = {};
 
@@ -70,10 +71,17 @@ for (const [name, id] of Object.entries(ROUTES)) {
     const kall = /kallelsetur/.test(txt);
 
     for (const t of info) if (!KNOWN.some(([re]) => re.test(t))) unknownInfo.add(t.trim());
-    if (a.Deleted || a.DeviationId) {
+    // Inställda turer är det värdefulla – logga dem var för sig.
+    if (a.Deleted) {
       deviations.push({ seen: new Date().toISOString(), route: name, id: a.Id,
-        departure: a.DepartureTime, deleted: !!a.Deleted, deviationId: a.DeviationId || null,
+        departure: a.DepartureTime, deviationId: a.DeviationId || null,
         from: a.FromHarbor?.Name, to: a.ToHarbor?.Name, info });
+    }
+    // DeviationId finns på i stort sett varje avgång – räkna dem i stället för att spara varje rad.
+    if (a.DeviationId) {
+      const k = name + '\t' + a.DeviationId;
+      devIds[k] = devIds[k] || { route: name, deviationId: a.DeviationId, n: 0, first: a.DepartureTime, info };
+      devIds[k].n++;
     }
     if (a.Deleted) continue;
 
@@ -183,10 +191,17 @@ if (Object.keys(days).length < DAYS_TOTAL - 2)
 
 // --- logg för framtida analys ---
 mkdirSync('log', { recursive: true });
-if (deviations.length) {
+if (deviations.length)
   appendFileSync('log/deviations.jsonl', deviations.map(d => JSON.stringify(d)).join('\n') + '\n');
-  console.log(`loggade ${deviations.length} avvikelser`);
+// Sammanfattning av avvikelse-id:n (en rad per id och körning, inte per avgång)
+const idRows = Object.values(devIds);
+if (idRows.length) {
+  const stamp = new Date().toISOString();
+  appendFileSync('log/deviation-ids.jsonl',
+    idRows.map(r => JSON.stringify({ seen: stamp, ...r })).join('\n') + '\n');
+  console.log(`avvikelse-id: ${idRows.length} olika`);
 }
+if (deviations.length) console.log(`inställda turer: ${deviations.length}`);
 if (unknownInfo.size) {
   const f = 'log/unknown-info.txt';
   const old = existsSync(f) ? readFileSync(f, 'utf8') : '';
