@@ -192,7 +192,7 @@ if (Object.keys(days).length < DAYS_TOTAL - 2)
 // --- logg för framtida analys ---
 mkdirSync('log', { recursive: true });
 if (deviations.length)
-  appendFileSync('log/deviations.jsonl', deviations.map(d => JSON.stringify(d)).join('\n') + '\n');
+  appendFileSync('log/installda-turer.jsonl', deviations.map(d => JSON.stringify(d)).join('\n') + '\n');
 // Sammanfattning av avvikelse-id:n (en rad per id och körning, inte per avgång)
 const idRows = Object.values(devIds);
 if (idRows.length) {
