@@ -48,6 +48,7 @@ const KNOWN = [
   [/halva färjans lastkapacitet|plats reserveras/i, 'K'],
   [/godstur/i, 'C'], [/kort bytestid/i, 'L'], [/går om passagerare/i, 'Z'],
   [/i mån av plats/i, 'plats'], [/lastas ej/i, 'ej'],
+  [/backa ombord/i, 'B'],
   [/kör så nära framförvarande/i, 'generic'],
 ];
 
@@ -105,6 +106,7 @@ for (const [name, id] of Object.entries(ROUTES)) {
       if (/källo-knippla lastas i mån|källö-knippla lastas i mån/i.test(txt)) codes.push('A');
       if (/källö-knippla lastas ej/i.test(txt)) codes.push('G');
       if (/burö lastas ej/i.test(txt)) codes.push('E');
+      if (/backa ombord/i.test(txt)) codes.push('B');
       (rawLegs[day] = rawLegs[day] || []).push({
         t: hhmm, min: +hhmm.slice(0,2)*60 + +hhmm.slice(3),
         from: harb(a.FromHarbor?.Name), to: harb(a.ToHarbor?.Name), ferry, codes
@@ -193,13 +195,29 @@ if (Object.keys(days).length < DAYS_TOTAL - 2)
 mkdirSync('log', { recursive: true });
 if (deviations.length)
   appendFileSync('log/installda-turer.jsonl', deviations.map(d => JSON.stringify(d)).join('\n') + '\n');
-// Sammanfattning av avvikelse-id:n (en rad per id och körning, inte per avgång)
-const idRows = Object.values(devIds);
-if (idRows.length) {
-  const stamp = new Date().toISOString();
-  appendFileSync('log/deviation-ids.jsonl',
-    idRows.map(r => JSON.stringify({ seen: stamp, ...r })).join('\n') + '\n');
-  console.log(`avvikelse-id: ${idRows.length} olika`);
+// DeviationId verkar vara ett id för tidtabellsversionen – ett per led.
+// Logga bara när det ändras, alltså när en turlista har lagts om.
+const idsNow = {};
+for (const r of Object.values(devIds))
+  if (!idsNow[r.route] || r.n > idsNow[r.route].n) idsNow[r.route] = r;
+const idFile = 'log/tidtabellsversioner.json';
+let idsPrev = {};
+if (existsSync(idFile)) { try { idsPrev = JSON.parse(readFileSync(idFile, 'utf8')); } catch (e) {} }
+const changed = [];
+for (const [route, r] of Object.entries(idsNow))
+  if (idsPrev[route] !== r.deviationId) {
+    changed.push({ seen: new Date().toISOString(), route,
+      from: idsPrev[route] || null, to: r.deviationId, avgangar: r.n });
+    idsPrev[route] = r.deviationId;
+  }
+if (changed.length) {
+  appendFileSync('log/tidtabellsandringar.jsonl',
+    changed.map(c => JSON.stringify(c)).join('\n') + '\n');
+  writeFileSync(idFile, JSON.stringify(idsPrev, null, 1));
+  for (const c of changed)
+    console.log(`TIDTABELL ÄNDRAD: ${c.route} ${c.from || '(ny)'} → ${c.to}`);
+} else {
+  console.log('tidtabellsversioner oförändrade');
 }
 if (deviations.length) console.log(`inställda turer: ${deviations.length}`);
 if (unknownInfo.size) {

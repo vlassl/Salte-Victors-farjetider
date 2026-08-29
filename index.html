@@ -404,10 +404,11 @@
       <p><dt>G</dt><dd>Fordon till Källö‑Knippla lastas ej.</dd></p>
       <p><dt>A</dt><dd>Fordon till/från Källö‑Knippla i mån av plats.</dd></p>
       <p><dt>E</dt><dd>Fordon till Burö lastas ej.</dd></p>
+      <p><dt>B</dt><dd>Backa ombord på den vita färjan Nordö 3.</dd></p>
       <p><dt>Z</dt><dd>Går om passagerare finns.</dd></p>
       <p style="margin-top:8px"><b>Linje 296</b> är en personfärja (ej bil). Andra Kalvsund-anlöpet är endast för avstigning. Mellan Björkös två lägen – Grönevik (bilfärjan) och Framnäs (296) – är det ca 7 min promenad; gångtiden kan justeras ovanför tabellen. Det går att parkera bilen vid både Grönevik och Framnäs.</p>
       <p>Överfarter: Hönöleden ≈ 13 min · Björköleden ≈ 6 min. Röda dagar körs som söndag; midsommar‑, jul‑ och nyårsafton körs lördagstrafik. Kontrollera alltid mot Färjerederiets app «Trafikinfo Färjerederiet» eller Västtrafik innan avfärd.</p>
-      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 21</span></p>
+      <p style="margin-top:10px;color:var(--muted);font-size:11px;font-weight:700"><span id="verline" onclick="tapVer()" style="cursor:pointer">Version 2026-07-04 · 22</span></p>
     </div>
   </details>
 </div>
@@ -799,7 +800,7 @@ const EXPL = {
   'R':['R','Hyppeln i mån av plats','Fordon till/från Hyppeln lastas i mån av plats.'],
   'C':['C','Godstur / inställd vissa dagar','Nordöleden: godstur – försening kan förekomma, övriga fordon lastas i mån av plats. Linje 296: går inte 24–25 dec, 31 dec, 6 jan, 3 april, 6 april, 1 maj, 14 maj, 19 juni och 21 juni.'],
   'D':['☎','Förbeställs','Turen måste förbeställas senast 30 min före avresa. Ring färjan som kör turen: <a href="tel:+46706012604">0706‑01 26 04</a> (M/S Burö, ordinarie) eller <a href="tel:+46706012605">0706‑01 26 05</a> (Polstjernan, reservfärja).'],
-  'B':['B','Reducerad kapacitet','Reducerad lastkapacitet kan uppstå (reservfärja onsdagar vid servicestopp).'],
+  'B':['B','Backa ombord','Backa ombord på den vita färjan Nordö 3.'],
   'L':['L','Kort bytestid','Färjan inväntar anslutande buss.'],
   'F':['F','Endast fredag','Går endast fredagar 15/4–15/9 (även dag före helgdag/midsommarafton).'],
   'G':['G','Ej Källö‑Knippla','Fordon till Källö‑Knippla lastas ej.'],
@@ -1028,6 +1029,7 @@ function _group(rows){
     if(/går om passagerare/.test(info)) other.push('Z');
     if(/i mån av plats/.test(info)) other.push('mån');
     if(/lastas ej/.test(info)) other.push('ej');
+    if(/backa ombord/.test(info)) other.push('B');
     byDay[day]=byDay[day]||{};
     (byDay[day][fc]=byDay[day][fc]||[]).push({t:hhmm,kall,other,
       from:(a.FromHarbor&&a.FromHarbor.Name)||'?', to:(a.ToHarbor&&a.ToHarbor.Name)||'?'});
